@@ -1,0 +1,450 @@
+---
+title: "25847333_Project_1"
+format: html
+editor: visual
+---
+
+# Project 1: Global Development Indicators
+
+# Loading Packages
+
+```{r}
+library(tidyverse)
+library(scales)
+library(ggplot2)
+library(RColorBrewer)
+```
+
+# Loading CSV Files
+
+```{r}
+#reading in a csv file using read_csv
+
+global_development <- read_csv("Global_Development_Indicators.csv")
+
+global_development
+```
+
+# Tidying Data
+
+```{r}
+global_development <- global_development |> 
+  pivot_longer(cols = starts_with("19") | starts_with("20"), #converting data from a wide format to a long format
+               names_to = "Year", #creating a new column for years        
+               values_to = "Value") #creating a new column for values
+
+global_development
+```
+
+```{r}
+global_development <- global_development |>
+  mutate(Value = na_if(Value, "..")) #changing missing values ".." to NA
+
+global_development
+```
+
+```{r}
+
+global_development <- global_development |>
+  filter(!is.na(Value))  #remove rows with NA values
+
+global_development
+```
+
+```{r}
+global_development <- global_development|>
+  mutate(Year = str_extract(Year, "\\d{4}")) #only keep the 4 digits that represent the year to be able to convert it numeric, getting rid of any brackets and letters
+
+global_development
+```
+
+```{r}
+global_development <- global_development |>
+  mutate(Year = as.numeric(Year), # converting the Year column to numeric
+         Value = format(as.numeric(Value), scientific = FALSE)) # converting the Value column to numeric and removing the scientific notation
+
+global_development
+```
+
+```{r}
+global_development <- global_development |>
+  rename(Country_Name = `Country Name`, #renaming column names to avoid having to use back ticks everytime we use the column names
+         Country_Code = `Country Code`,
+         Series_Name = `Series Name`,
+         Series_Code = `Series Code`)
+
+global_development
+```
+
+```{r}
+global_development <- global_development |>
+  mutate(Value = as.numeric(Value)) |> #convert the value column from a character to numeric
+  arrange(Year) #arrange years in ascending order
+
+global_development
+```
+
+## Transforming data
+
+### Distribution of Government Expenditure on Education
+
+```{r}
+#filtering data where series_name is equal to primary, secondary or tertiary education
+
+education_data <- global_development |>
+  filter(Series_Name %in% c("Expenditure on primary education (% of government expenditure on education)",
+                             "Expenditure on secondary education (% of government expenditure on education)",
+                             "Expenditure on tertiary education (% of government expenditure on education)")) |>
+  group_by(Series_Name) #grouping by series_name
+  
+  education_data
+```
+
+```{r}
+ 
+education_data_summary <- education_data|>
+  mutate(Mean_Expenditure = mean(Value, na.rm = TRUE)) |> #work out the average for primary, tertiary and secondary expenditure and ignore NA values
+  summarise(Mean_Expenditure, Series_Name)
+
+education_data_summary
+```
+
+### Electric Power Consumption Per Capita
+
+```{r}
+electric_power_data <- global_development |>
+  filter(Series_Name == "Electric power consumption (kWh per capita)", #filter by electric 
+         Year >= 2000, Year <= 2020)  #filter between the years 2000 and 2020
+  
+electric_power_data
+```
+
+```{r}
+electric_power_avg <- electric_power_data |>
+group_by(Country_Name) |> #group by country
+  summarize(Average_Consumption = mean(Value, na.rm = TRUE)) |> #ignore NA values
+  ungroup() #ungroup from country
+
+electric_power_avg
+```
+
+```{r}
+electric_power_avg <- electric_power_avg |>
+  arrange(desc(Average_Consumption)) |> #arrange biggest to smallest
+  slice_head(n = 5) #only select the top 5 countries
+
+electric_power_avg
+```
+
+## **Internet Usage Across GDP Levels for the Top 3 Economies**
+
+```{r}
+internet_data <- global_development |> #creating a database for internet usage
+  filter(Series_Name == "Individuals using the Internet (% of population)") |> #filter by individuals using the internet
+  select(Country_Name, Year, Value) |>
+  rename(Internet_Usage = Value) #renaming the value column
+
+internet_data
+```
+
+```{r}
+# Filter the global_development dataset for GDP
+gdp_data <- global_development |> #creating a database for gdp
+  filter(Series_Name == "GDP (constant 2015 US$)") |> #filter by GDP
+  select(Country_Name, Year, Value) |>
+  rename(GDP = Value) #renaming the value column
+
+gdp_data
+```
+
+```{r}
+#combining the internet usage dataset with the GDP dataset using inner join
+combined_data <- internet_data |>
+  inner_join(gdp_data, by = c("Country_Name", "Year"))
+
+combined_data
+```
+
+```{r}
+top_gdp_countries <- combined_data |>
+  group_by(Country_Name) |>
+  summarize(Average_GDP = mean(GDP, na.rm = TRUE)) |> #work out the mean of GDP for each country and ignore NA values
+  arrange(desc(Average_GDP)) |> #arrange from biggest to smallest
+  slice_head(n = 3)  #select the top 3 countries with the highest GDP
+
+top_gdp_countries
+```
+
+```{r}
+top_countries_data <- combined_data |>
+  filter(Country_Name %in% top_gdp_countries$Country_Name) #filter the combined datasets for the top 3 GDP countries
+
+top_countries_data
+```
+
+```{r}
+top_countries_data <- top_countries_data |>
+  mutate(Internet_Usage = Internet_Usage * 100) #convert it to a percentage by multiplying by 100
+
+top_countries_data
+```
+
+## Estimated Level of Corruption Control
+
+```{r}
+corruption_data <- global_development |>
+  filter(Series_Name == "Control of Corruption: Estimate") |> # Filter the global_development dataset for Control of Corruption
+  filter(Year >= 2002 & Year <= 2022) |>
+  select(Country_Name, Year, Value) |>
+  rename(Control_of_Corruption = Value) #renaming the value column
+
+corruption_data
+```
+
+```{r}
+corruption_data <- corruption_data |>
+  filter(!is.na(Control_of_Corruption)) #remove any values that are NOT NA
+
+corruption_data
+```
+
+```{r}
+corruption_data <- corruption_data |>
+  filter(Control_of_Corruption >=0) #filter corruption values that are greater than or equal to 0
+
+corruption_data
+```
+
+## **Population Growth vs. Urban Population**
+
+```{r}
+population_growth_data <- global_development |>
+  filter(Series_Name == "Population growth (annual %)") |> #filter for population growth
+  select(Country_Name, Year, Value) |> #include the country's names, year and values
+  rename(Population_Growth = Value) #renaming the value column
+
+population_growth_data
+```
+
+```{r}
+urban_population_data <- global_development |>
+  filter(Series_Name == "Urban population") |> #filter for urban population
+  select(Country_Name, Year, Value) |> #select the folowing columns to appear in our dataset
+  rename(Urban_Population = Value) #renaming the value column
+
+urban_population_data
+```
+
+```{r}
+combined_population_data <- population_growth_data |>
+  inner_join(urban_population_data, by = c("Country_Name", "Year")) #joining the population growth and urban population datasets
+
+combined_population_data
+```
+
+```{r}
+
+top_growth_countries <- combined_population_data |>
+  group_by(Country_Name) |>
+  summarize(Average_Population_Growth = mean(Population_Growth, na.rm = TRUE)) |> #calculate the average population growth and ignore NA values
+  arrange(desc(Average_Population_Growth)) |> #sort in descending order
+  slice_head(n = 3)  #select top 3 countries with the highest average
+
+top_growth_countries
+```
+
+```{r}
+top_countries_data_pop <- combined_population_data |>
+  filter(Country_Name %in% top_growth_countries$Country_Name) #filter the combined datasets for the top 3 population growth countries
+
+top_countries_data_pop
+```
+
+# Statistical Summaries
+
+### Distribution of Government Expenditure on Education
+
+```{r}
+#ignoring all NA Values
+education_stats <- education_data |>
+  group_by(Series_Name) |>
+  summarise(
+    Mean = mean(Value, na.rm = TRUE), #work out the average
+    Median = median(Value, na.rm = TRUE), #work out the median
+    Standard_Dev = sd(Value, na.rm = TRUE), #work out the standard deviation
+    Min = min(Value, na.rm = TRUE), #working out the minimum value
+    Max = max(Value, na.rm = TRUE), #work out the maximum value
+    IQR = IQR(Value, na.rm = TRUE) #work out the interquartile range
+  )
+
+education_stats
+```
+
+### Electric Power Consumption Per Capita
+
+```{r}
+#ignoring all NA Values
+electric_power_stats <- electric_power_data |>
+  group_by(Series_Name) |>
+  summarise(
+    Mean = mean(Value, na.rm = TRUE),  #work out the average
+    Median = median(Value, na.rm = TRUE), #work out the median
+    Standard_Dev = sd(Value, na.rm = TRUE),  #work out the standard deviation
+    Min = min(Value, na.rm = TRUE), #work out the minimum value
+    Max = max(Value, na.rm = TRUE), #work out the maximum value
+    IQR = IQR(Value, na.rm = TRUE)  #work out the interquartile range
+  )
+
+electric_power_stats
+```
+
+### **Internet Usage Across GDP Levels for the Top 3 Economies**
+
+```{r}
+#ignoring all NA Values
+summary_stats <- top_countries_data |>
+  group_by(Country_Name) |>
+  summarise(
+    Mean_Internet_Usage = mean(Internet_Usage, na.rm = TRUE), #work out the average
+    Median_Internet_Usage = median(Internet_Usage, na.rm = TRUE), #work out the median
+    StdDev_Internet_Usage = sd(Internet_Usage, na.rm = TRUE), #work out the standard deviation
+    Min_Internet_Usage = min(Internet_Usage, na.rm = TRUE),#work out the standard deviation
+    Max_Internet_Usage = max(Internet_Usage, na.rm = TRUE),  #work out the maximum value
+    IQR_Internet_Usage = IQR(Internet_Usage, na.rm = TRUE), #work out the interquartile range
+    Mean_GDP = mean(GDP, na.rm = TRUE), #work out the average
+    Median_GDP = median(GDP, na.rm = TRUE), #work out the median
+    StdDev_GDP = sd(GDP, na.rm = TRUE), #work out the standard deviation
+    Min_GDP = min(GDP, na.rm = TRUE), #work out the minimum
+    Max_GDP = max(GDP, na.rm = TRUE),  #work out the maximum value
+    IQR_GDP = IQR(GDP, na.rm = TRUE) #work out the interquartile range
+  )
+
+summary_stats
+```
+
+### Estimated Level of Corruption Control
+
+```{r}
+ #work out the maximum value
+corruption_summary_stats <- corruption_data |>
+  group_by(Country_Name) |>
+  summarise(
+    Mean_Control_of_Corruption = mean(Control_of_Corruption, na.rm = TRUE), #work out the average
+    Median_Control_of_Corruption = median(Control_of_Corruption, na.rm = TRUE), #work out the median
+    StdDev_Control_of_Corruption = sd(Control_of_Corruption, na.rm = TRUE), #work out the standard deviation
+    Min_Control_of_Corruption = min(Control_of_Corruption, na.rm = TRUE), #work out the minimum
+    Max_Control_of_Corruption = max(Control_of_Corruption, na.rm = TRUE),  #work out the maximum value
+    IQR_Control_of_Corruption = IQR(Control_of_Corruption, na.rm = TRUE) #work out the interquartile range
+  )
+
+corruption_summary_stats
+```
+
+### **Population Growth vs. Urban Population**
+
+```{r}
+ #work out the maximum value
+population_summary_stats <- combined_population_data |>
+  group_by(Country_Name) |>
+  summarise(
+    Mean_Population_Growth = mean(Population_Growth, na.rm = TRUE), #work out the average
+    Median_Population_Growth = median(Population_Growth, na.rm = TRUE), #work out the median
+    StdDev_Population_Growth = sd(Population_Growth, na.rm = TRUE), #work out the standard deviation
+    Min_Population_Growth = min(Population_Growth, na.rm = TRUE), #work out the interquartile range
+    Max_Population_Growth = max(Population_Growth, na.rm = TRUE),  #work out the maximum value
+    IQR_Population_Growth = IQR(Population_Growth, na.rm = TRUE), #work out the interquartile range
+    Mean_Urban_Population = mean(Urban_Population, na.rm = TRUE), #work out the average
+    Median_Urban_Population = median(Urban_Population, na.rm = TRUE),#work out the median
+    StdDev_Urban_Population = sd(Urban_Population, na.rm = TRUE), #work out the standard deviation
+    Min_Urban_Population = min(Urban_Population, na.rm = TRUE), #work out the interquartile range
+    Max_Urban_Population = max(Urban_Population, na.rm = TRUE),  #work out the maximum value
+    IQR_Urban_Population = IQR(Urban_Population, na.rm = TRUE) #work out the interquartile range
+  )
+
+population_summary_stats
+```
+
+# Exploratory Data Analysis
+
+### Distribution of Government Expenditure on Education
+
+```{r}
+ggplot(education_data_summary, aes(x = "", y = Mean_Expenditure, fill = Series_Name)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) + #convert it to a pie chart
+  scale_fill_brewer(palette= "Accent")+ #use a colour brewer palette
+  labs(title = "Distribution of Government Expenditure on Education", #title of the graph
+       fill = "Type of Education Expenditure",  #rename the legend title
+       y = "Mean Expenditure",  # Y axis label
+       x = "",  # Remove x axis label 
+       fill = "Education Level") +
+  theme_minimal() +  # Remove the block around the graph
+  theme(legend.position = "bottom", #position the legend on the bottom of the pie chart
+        legend.text = element_text(size = 5), #resize text in the legend
+        legend.title = element_text(size = 5),
+        plot.title = element_text(hjust = 0.5)) + #center the title of the graph
+  guides(fill = guide_legend(ncol = 1)) #makes the legend appear underneath each other
+```
+
+### Electric Power Consumption Per Capita
+
+```{r}
+ggplot(electric_power_avg, aes(x = reorder(Country_Name, -Average_Consumption), y = Average_Consumption)) +
+  geom_bar(stat = "identity", fill = "pink") + #craeting a bar chart
+  labs(title = "Average Electric Power Consumption per Capita \n (2000-2020)", #adding custom labels
+       x = "Country",
+       y = "Average Electric Power Consumption") +
+  scale_y_continuous(labels = scales::comma) +  #remove scientific noatation
+  theme_minimal() + #adding a theme to make it neat
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #change x axis labels
+```
+
+### **Internet Usage Across GDP Levels for the Top 3 Economies**
+
+```{r}
+ggplot(top_countries_data, aes(x = GDP, y = Internet_Usage, fill = Country_Name)) +
+  geom_violin(trim = FALSE, drop = FALSE) +  # Ensure all groups are considered
+  labs(title = "Internet Usage vs. GDP",
+      subtitle = "For The Top 3 GDP Countries", #adding custom labels
+       x = "GDP (constant 2015 US$)",
+       y = "Individuals using the Internet",
+      fill = "Country" ) +
+  scale_fill_brewer(palette = "Accent") + #adding a colour brewer palette 
+  scale_y_continuous(labels = label_percent (scale = 0.01)) +  #add percent symbols to the axis
+  scale_x_continuous(labels = scales::comma) +  #using comma notation removes scientific notation
+  theme_minimal() + #creats a neat graph
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), #repositions x axis labels at an angle
+        legend.position = "bottom") #move legen position to the bottom of the graph
+```
+
+## Estimated Level of Corruption Control
+
+```{r}
+ggplot(corruption_data, aes(x = Year, y = Country_Name, fill = Control_of_Corruption)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "purple", high = "blue", #low values are purple and the higher the values are the darker the colour gets
+                       name="Corruption Control") +  
+  labs(title = "Heat Map of Control of Corruption", #custom labels
+       subtitle = "Evolution Over Time for Each Country",
+       x = "Year",
+       y = "Country") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) #turns the x axis labels at an angle
+```
+
+## **Population Growth vs. Urban Population**
+
+```{r}
+ggplot(top_countries_data_pop, aes(x = Urban_Population, y = Population_Growth, color = Country_Name, group = Country_Name)) +
+  geom_point(alpha = 0.7) +  #adds points with transparency
+  geom_line(linewidth = 0.7) +  #adds lines connecting points for each country
+  labs(title = "Population Growth vs. Urban Population for Top 3 Countries", #adds custom labels
+       x = "Urban Population ",
+       y = "Population Growth (annual)",
+       color = "Country") + #renames legend
+  theme_minimal() + #adds a theme to mske it look neat
+  scale_color_brewer(palette = "Set2") +  #adds a colour brewer palette for points
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_x_continuous(labels= scales:: comma)+ #removes scientifc notation
+  scale_y_continuous(labels = label_percent(scale = 1))  # adds percetage signs onto the y axis labels
+```

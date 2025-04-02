@@ -1,0 +1,1085 @@
+---
+title: "25847333_Project_3_Olympic_Games"
+format: html
+editor: visual
+---
+
+# Project 3: Olympic Data
+
+# Installing Necessary Packages
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+library(ggrepel)
+```
+
+# Loading CSV files into R Studio
+
+```{r}
+#We will be making use of the tidyverse package which contains the readr package. This allows you to read a csv file into R Studio. 
+
+athletes <- read_csv("olympic_athletes.csv")
+hosts <- read_csv("olympic_hosts.csv")
+medals <- read_csv("olympic_medals.csv")
+results <- read_csv("olympic_results.csv")
+```
+
+# Tidying Data
+
+### Olympic Athletes Data
+
+```{r}
+athletes|>
+  filter(!str_detect(athlete_full_name, " ")) #identify athletes with only a last name (no space in their name)
+athletes
+```
+
+```{r}
+#sepreating athlete_full_name into 2 columns 
+
+ athletes <- athletes|>
+  separate_wider_delim( #seperate full name into athletes first name and athletes last name
+    athlete_full_name,
+    delim= " ", #seperate where there is a space
+    names=c("athlete_f", "athlete_l"),
+    too_few = "align_end", #adds NA if there is a missing name
+    too_many = "merge" #merges names if there are more than 2
+  )
+  
+athletes
+```
+
+```{r}
+#Checking to see if the missing name in the dataset has been replaced by a NA 
+
+athletes|>
+  filter(is.na(athlete_f)) 
+athletes
+```
+
+```{r}
+#removing columns that are unnessacary for our data analysis
+
+athletes <- athletes |>
+  select(-bio, -athlete_url)
+
+athletes
+```
+
+```{r}
+athletes <- athletes |>
+  arrange(desc(games_participations))|> #arrange the column from biggest to smallest
+  relocate(athlete_year_birth, .after = athlete_l) #moving the column to appear after the athlete_l column
+
+
+athletes 
+```
+
+```{r}
+athletes <- athletes |>
+  filter(  # filter by rows that contain medals for Gold, Silver, and Bronze
+    str_detect (athlete_medals, "\\d+\\s*G"), #captures any digit followed by a space and G
+    str_detect (athlete_medals, "\\d+\\s*S"), #captures any digit followed by a space and S
+    str_detect (athlete_medals, "\\d+\\s*B") #captures any digit followed by a space and B
+  ) |>
+  mutate(
+    Gold = str_extract (athlete_medals, "(\\d+)(?=\\s*S)"), # Use regex to extract the number of medals and place them into new columns
+    Silver = str_extract (athlete_medals, "(\\d+)(?=\\s*S)"),
+    Bronze = str_extract (athlete_medals, "(\\d+)(?=\\s*S)")
+  ) 
+
+athletes
+```
+
+```{r}
+athletes <- athletes |>
+  select(-athlete_medals) #removing the entire column because I have individually seperated the data into their respective columns
+
+athletes
+```
+
+```{r}
+# Convert the Gold, Silver and Bronze columns to numeric
+
+athletes <- athletes |>
+  mutate(
+    Gold = as.numeric(Gold),
+    Silver = as.numeric(Silver),
+    Bronze = as.numeric(Bronze)
+  )
+
+athletes
+```
+
+```{r}
+#relocating the column to appear before the 'first_game' column to make the data easier to analyze
+
+athletes <- athletes |>
+  relocate(Gold, .before = first_game)
+
+athletes
+```
+
+```{r}
+#relocating the column to appear after the 'Gold' column to make the data easier to analyze
+
+athletes <- athletes |>
+  relocate(Silver, .after = Gold)
+
+athletes
+```
+
+```{r}
+#relocating the column to appear after the 'Silver' column to make the data easier to analyze
+
+athletes <- athletes |>
+  relocate(Bronze, .after = Silver)
+
+athletes
+```
+
+```{r}
+#Separates the first_game character column into multiple columns with a regular expression 
+
+athletes <- athletes |>
+  separate(
+    first_game,
+    into = c("host", "year"), #naming the new columns
+    sep = " (?=\\d{4})", #looks ahead to identify a space followed by any four digits(the year)
+    extra = "merge"
+  )
+
+athletes
+```
+
+```{r}
+#renaming colomn names to make them more descriptive, cleaner and easier to read
+
+athletes <- athletes |>
+  rename(Athlete_First_Name = athlete_f, #providing the new column name on the left followed by the old column name on the right 
+         Athlete_Last_Names = athlete_l,
+         Athlete_Birth_Year = athlete_year_birth,
+         Games_Participations = games_participations,
+         Year_of_First_Game = year,
+         Host_of_First_Game = host
+         )
+
+athletes
+```
+
+```{r}
+#mutate replaces the old column with the new column which converts everything to lowercase letters
+
+athletes <- athletes |>
+  mutate(Athlete_Last_Names = str_to_lower(Athlete_Last_Names), 
+         Athlete_Last_Names = str_to_title(Athlete_Last_Names)) #converts the column to title case, which capitalizes only the first letter of each word
+  
+athletes
+```
+
+### Olympic Hosts Data
+
+```{r}
+ #modifies the game_slug column
+hosts <- hosts |>
+  mutate(game_slug = str_replace_all(game_slug, "-", " "), #replaces all dashes with a space
+         game_slug = str_to_title(game_slug)) #converts the column to title case, which capitalizes only the first letter of each word) 
+
+hosts
+```
+
+```{r}
+#seperating game_slug into 2 columns
+
+hosts <- hosts |>
+  separate(
+    game_slug,
+    into = c("host", "year"), #naming the new columns
+    sep = " (?=\\d{4})", #looks ahead to identify a space followed by any four digits(year)
+    extra = "merge" #merge additional words
+  )
+
+hosts
+```
+
+```{r}
+ hosts <- hosts|>
+  separate_wider_delim( #seperate the date and time from the game_end_date column
+    game_end_date,
+    delim= " ", #seperate by the delimiter which is where there is a space
+    names=c("game_end_date", "game_end_time"), #new column names
+    too_few = "align_end", #adds NA if there is a missing name to correct the length
+    too_many = "merge" #merges words if there are more than 2
+  )
+ 
+ hosts
+```
+
+```{r}
+hosts <- hosts|>
+  separate_wider_delim( #seperate the date and time from the game_start_date column
+    game_start_date,
+    delim= " ", #seperate by the delimiter which is where there is a space
+    names=c("game_start_date", "game_start_time"), #new column names
+    too_few = "align_start", #adds NA to the missing start time
+    too_many = "merge" #merges words if there are more than 2
+  )
+
+hosts
+```
+
+```{r}
+
+hosts <- hosts |>
+  mutate(year = as.numeric(year), #changes it to a numeric value
+         game_end_date = parse_date_time(game_end_date, "ymd"), #transforms columns to the date format
+         game_end_time = hms::as_hms(game_end_time), #changes it to hours, minute, seconds format
+         game_start_date = ymd(game_start_date), #year, month, date format
+         game_start_time = hms::as_hms(game_start_time))
+
+hosts
+```
+
+```{r}
+hosts <- hosts |>
+  select(-game_name, -game_year) #removing these rows because they are unnecessary and are a duplicate of the year column
+
+hosts
+```
+
+```{r}
+#renaming column names to be more descriptive
+#providing the new column name on the left followed by the old column name on the right 
+
+hosts <- hosts |>
+  rename( Game_Host = host,
+          Game_of_Year = year,
+          Game_End_Date = game_end_date,
+          Game_End_Time = game_end_time,
+          Game_Start_Date = game_start_date,
+          Game_Start_Time = game_start_time,
+          Game_Location = game_location,
+          Game_Season = game_season
+         )
+hosts
+```
+
+### Olympic Medals Data
+
+```{r}
+medals <- medals |>
+  select(-participant_title, -country_code, -country_3_letter_code, -event_title, -athlete_url) #removes columns from my data that arent necassary for my necassary and are repititive
+
+medals
+```
+
+```{r}
+medals <- medals |>
+  separate(
+    slug_game,
+    into = c("host", "year"), #naming the new columns
+    sep = "-(?=\\d{4})", #looks ahead to identify a dash followed by any four digits(year)
+    extra = "merge" #merge additional words
+  )
+
+medals
+```
+
+```{r}
+medals <- medals |>
+  mutate(year = as.numeric(year)) #convert it to a numeric column
+
+medals
+```
+
+```{r}
+medals <- medals |>
+  mutate(host = str_to_title(host)) #makes all words in the host column start with a capital letter
+
+medals
+```
+
+```{r}
+medals <- medals|>
+  separate_wider_delim( #seperate full name into athletes first name and athletes last names
+    athlete_full_name,
+    delim= " ", #seperate where there is a space
+    names=c("athlete_first_name", "athlete_last_names"),
+    too_few = "align_end", #adds NA if there is a missing name
+    too_many = "merge" #merges names if there are more than 2
+  )
+
+ medals
+```
+
+```{r}
+medals <- medals |>
+  mutate(athlete_last_names = str_to_lower(athlete_last_names), 
+         athlete_last_names = str_to_title(athlete_last_names)) #converts the column to title case, which capitalizes only the first letter of each word
+  
+medals
+```
+
+```{r}
+#renaming the column names
+
+medals <- medals |>
+  rename( Olympic_Sport = discipline_title,
+          Host = host,
+          Olympic_Year = year,
+          Event_Gender = event_gender,
+          Medal_Type = medal_type,
+          Participant_Type = participant_type,
+          Athlete_First_Name = athlete_first_name,
+          Athlete_Last_Names = athlete_last_names,
+          Country = country_name
+         )
+
+medals
+```
+
+```{r}
+#fct_recode allows you to recode the values in the Medal Type column
+
+medals <- medals |>
+  mutate(Medal_Type = fct_recode(Medal_Type,
+                                  "G" = "GOLD", #change the word GOLD to the letter G instead
+                                  "S" = "SILVER",
+                                  "B" = "BRONZE"))
+
+medals
+```
+
+```{r}
+medals <- medals |>
+  arrange(Olympic_Sport) #arrange sports in alphabetical order to easily sort through the sports
+
+medals
+```
+
+### Olympic Results Data
+
+```{r}
+results <- results |>
+  separate(
+    slug_game,
+    into = c("host", "year"), #naming the new columns
+    sep = "-(?=\\d{4})", #looks ahead to identify a dash followed by any four digits(year)
+    extra = "merge" #merge additional words
+  )
+
+results
+```
+
+```{r}
+results <- results |>
+  mutate(year = as.numeric(year)) #convert it to a numeric column
+
+results
+```
+
+```{r}
+results <- results |>
+  filter(participant_type == "Athlete") #only want events by individual athletes and not teams
+
+results
+```
+
+```{r}
+results <- results|>
+  separate_wider_delim( #seperate full name into athletes first name and athletes last names
+    athlete_full_name,
+    delim= " ", #seperate where there is a space
+    names=c("athlete_first_name", "athlete_last_names"),
+    too_few = "align_end", #adds NA if there is a missing name
+    too_many = "merge" #merges names if there are more than 2
+  )
+
+results
+```
+
+```{r}
+results <- results |>
+  mutate(athlete_last_names = str_to_lower(athlete_last_names), #converts the column values to lower case to keep the values standardised 
+         athlete_last_names = str_to_title(athlete_last_names),
+         host = str_to_title(host)) #converts the column to title case, which capitalizes only the first letter of each word
+  
+results
+```
+
+```{r}
+#selecting which columns to keep in our dataset using their names and leaving out the column names that we want to drop
+
+results <- results |>
+  select(discipline_title,
+         host,
+         year,
+         participant_type,
+         medal_type,
+         rank_position,
+         country_name,
+         athlete_first_name,
+         athlete_last_names
+         ) 
+
+results
+```
+
+```{r}
+results <- results |>
+  relocate(athlete_first_name, .after = year)|> #moving column to appear after the year column
+  relocate(athlete_last_names, .after = athlete_first_name)|> #moving column to appear after the athlete_first_name column
+  relocate(participant_type, .before = country_name)|> #moving column to appear before the athlete_url column
+  arrange(rank_position) #organise values in ascending order
+
+results
+```
+
+```{r}
+#changing the column names to new names to tidy them
+
+results <- results |>
+  rename( Olympic_Sport = discipline_title,
+          Host_of_First_Game = host,
+          Olympic_Year = year,
+          Athlete_First_Name = athlete_first_name,
+          Athlete_Last_Names = athlete_last_names,
+          Medal_Type = medal_type,
+          Rank_Position = rank_position,
+          Country = country_name,
+          Participant_Type = participant_type
+         )
+
+results
+```
+
+```{r}
+#fct_recode allows you to recode the values in the Meal_Type column
+
+results <- results |>
+  mutate(Medal_Type = fct_recode(Medal_Type,
+                                  "G" = "GOLD", #change the word GOLD to the letter G instead
+                                  "S" = "SILVER",
+                                  "B" = "BRONZE"))
+
+results
+```
+
+# Transforming Data
+
+### Games Participations
+
+```{r}
+#inner joining the medals dataset and the athletes dataset
+
+medals_athletes <- medals |>  
+  inner_join(athletes, by = c("Athlete_First_Name", "Athlete_Last_Names"))
+
+medals_athletes <- medals_athletes |>
+   filter(Event_Gender %in% c("Women", "Men")) #filter the data by values that are the values in the vector
+
+medal_athletes_joined <- medals_athletes |> 
+  group_by(Olympic_Year, Event_Gender) |>  # group by year and gender
+  summarise(
+   Sum_Games_Participations=sum(Games_Participations)) #calculates the total Games Participation for each year and each gender
+
+medal_athletes_joined <- medal_athletes_joined |>
+  arrange(Olympic_Year)  #arrange olympic year from earliest to latest (ascending order)
+
+medal_athletes_joined
+```
+
+### Medals Won During the Winter Olympics
+
+```{r}
+#inner join the medals and hosts dataset by year
+
+medals_hosts_winter <- medals |> 
+  inner_join(hosts, by = c("Olympic_Year" = "Game_of_Year"), relationship = "many-to-many")|>
+  filter(Game_Season == "Winter")  # filter by Winter Olympics
+
+individual_participation <- medals_hosts_winter |>
+  filter(Participant_Type == "Athlete") # filter by individual athlete events and exclude group events
+
+medals_by_winter_countries <- individual_participation |>
+  group_by(Country) |>  # group by country
+  summarise(Total_Medals = n()) #adds the total number of medals together
+
+medals_by_winter_countries <-medals_by_winter_countries |>
+  arrange(desc(Total_Medals))|> #organise total medals from biggest to smallest
+  slice_head(n =3) #choose the top 3 countries with the most medals from individual events
+
+medals_by_winter_countries
+```
+
+### Medals Won During The Summer Olympics
+
+```{r}
+#inner join the medals and hosts dataset by year
+
+medals_hosts_summer <- medals |> 
+  inner_join(hosts, by = c("Olympic_Year" = "Game_of_Year"), relationship = "many-to-many")|>
+  filter(Game_Season == "Summer" & Country == "United States of America" | Country ==  "Soviet Union" | Country == "Germany")  #filter by Summer Olympic games and if the countries are equal to the US or SU or Germany
+
+individual_participation <- medals_hosts_summer |>
+  filter(Participant_Type == "Athlete")  #filter by individual athlete events
+
+medals_by_summer_countries <- individual_participation |>
+  group_by(Country) |>  #group by country
+  summarise(Total_Medals = n()) #summarize the total number of medals by country
+
+medals_by_summer_countries <-medals_by_summer_countries |>
+  arrange(desc(Total_Medals))|> #arrange in descending order
+  slice_head(n =3) #only print the top 3
+
+
+medals_by_summer_countries
+```
+
+### Age Demographics And The Number of Medals They Win
+
+```{r}
+#joining medals and athletes data with a left join to keep all records from the left dataset and only the matching records from the right dataset
+
+medals_with_age <- medals_with_age |>
+  filter(!is.na(Athlete_Birth_Year) & !is.na(Olympic_Year)) #filter by values that are not NAs values
+
+medals_with_age <- medals |>
+  left_join(athletes, by = c("Athlete_First_Name", "Athlete_Last_Names")) |>
+  mutate(Age = Olympic_Year - Athlete_Birth_Year)  #calculate athletes age when they attended the olympics
+
+medals_with_age <- medals_with_age |>
+  filter(Age >= 13)  #only keep the rows where age is greater than or equal to 13
+
+#summarize the total number of medals by age
+medals_by_age <- medals_with_age |>
+  group_by(Age, Event_Gender) |>
+  summarise(Total_Medals = n(), .groups = "drop") #drops grouping information
+
+medals_by_age
+```
+
+### Hosts vs Non hosts
+
+```{r}
+#identify the top 3 countrieries by their total medals
+
+total_medals_summary <- medals |>
+  group_by(Country) |>  #group by Country
+  summarise(Total_Medals = sum(Medal_Type == "G", na.rm = TRUE) +  #add up all types of medals to get the total number of medals
+              sum(Medal_Type == "S", na.rm = TRUE) +  #calculate the sum of Silver medals
+              sum(Medal_Type == "B", na.rm = TRUE),  #remove any NA values
+            .groups = "drop")  #ungroup after summarizing
+
+
+top_3_countries <- total_medals_summary |>
+  filter(Country != "Soviet Union") |> #filter countries that are not the Soviet Union because they are not a host country
+  arrange(desc(Total_Medals)) |>  #sort Total_Medals in descending order
+  slice_head(n = 3)  #select the top 3 countries
+
+top_3_countries
+
+```
+
+```{r}
+#US hosted in 1996
+
+#looks at a range of 30 years 
+
+top_countries <- top_3_countries$Country
+
+
+medals_top_country_us <- all_medals |>
+  filter(Country == "United States of America" & Game_of_Year >= 1990 & Game_of_Year <= 2020)  #filter by US and if the olympic year is greater than or equal to 1980 and if it is smaller than or equal to 2020
+
+
+medals_summary_by_year_us <- medals_top_country_us |>
+  filter(Game_Season == "Summer")|> #filter where season is summer
+  group_by(Country, Game_of_Year) |>  #group by Country and Year
+  summarise(
+    Total_Medals = n(),  #count total medals won
+    Gold_Medals = sum(Medal_Type == "G", na.rm = TRUE),  #count gold medals
+    Silver_Medals = sum(Medal_Type == "S", na.rm = TRUE),  #count silver medals
+    Bronze_Medals = sum(Medal_Type == "B", na.rm = TRUE),  #remove NA values
+    .groups = "drop"  # ungroup after summarizing
+  )
+
+medals_summary_by_year_us
+```
+
+```{r}
+#Germany hosted in 1936
+
+#looks at a range of 30 years 
+
+
+medals_top_country_ger <- all_medals |>
+  filter(Country == "Germany" & Game_of_Year >= 1930 & Game_of_Year <= 1960)  #filter by Germany and if the olympic year is greater than or equal to 1930 and if it is smaller than or equal to 1980
+
+
+medals_summary_by_year_ger <- medals_top_country_ger |>
+  filter(Game_Season == "Summer")|> #filter where season is summer
+  group_by(Country, Game_of_Year) |>  #group by Country and Year
+  summarise(
+    Total_Medals = n(),  #count total medals won
+    Gold_Medals = sum(Medal_Type == "G", na.rm = TRUE),  #count gold medals
+    Silver_Medals = sum(Medal_Type == "S", na.rm = TRUE),  #remove NA values
+    Bronze_Medals = sum(Medal_Type == "B", na.rm = TRUE),  
+    .groups = "drop"  #un group after summarizing
+  )
+
+medals_summary_by_year_ger
+```
+
+```{r}
+#Great Britain hosted in 2012
+
+#looks at a range of 30 years 
+
+
+medals_top_country_bri <- all_medals |>
+  filter(Country == "Great Britain" & Game_of_Year >= 1990 & Game_of_Year <= 2020) #filter by Germany and if the olympic year is greater than or equal to 1980 and if it is smaller than or equal to 2020
+
+
+medals_summary_by_year_bri <- medals_top_country_bri |>
+  filter(Game_Season == "Summer")|> #filter where season is summer
+  group_by(Country, Game_of_Year) |>  #group by Country and Year
+  summarise(
+    Total_Medals = n(),  #count total medals won
+    Gold_Medals = sum(Medal_Type == "G", na.rm = TRUE),  #count gold medals
+    Silver_Medals = sum(Medal_Type == "S", na.rm = TRUE),  #count silver medals
+    Bronze_Medals = sum(Medal_Type == "B", na.rm = TRUE),  #remove NA values
+    .groups = "drop"  #ungroup after summarizing
+  )
+
+medals_summary_by_year_bri
+```
+
+### Top Athletes vs Their Country
+
+```{r}
+
+top_5_countries <- medals |>
+  filter(!is.na(Country)) |>  #removing rows that contain a NA value in the Country column
+  group_by(Country) |>
+  summarise(Total_Medals = n(), .groups = "drop") |> #work out the sum of medals
+  arrange(desc(Total_Medals)) |> #organize them from biggest to smallest values
+  slice_head(n = 5) #print the top 5
+
+
+medals_top_5 <- medals |>
+  filter(Country %in% top_5_countries$Country & #filter the data set by the top 5 countries
+         !is.na(Athlete_First_Name) & !is.na(Athlete_Last_Names))  #ignore rows with NA values in athlete first and last names
+
+
+#group by country, athlete, and sport to get total medals for each athlete in each sport
+athlete_medal_counts <- medals_top_5 |>
+  group_by(Country, Athlete_First_Name, Athlete_Last_Names, Olympic_Sport) |>
+  summarise(Total_Medals = n(), .groups = "drop") |> #drops grouping information
+  arrange(Country, desc(Total_Medals)) #sort countries in ascending order and then sort medals in descending order
+
+
+best_athletes <- athlete_medal_counts |>
+  group_by(Country) |>
+  slice_head(n = 1)  #select only the top athlete for each country
+
+
+country_sport_medals <- medals_top_5 |>
+  filter(Participant_Type == "Athlete") |>  #filter by individual athlete events
+  group_by(Country, Olympic_Sport) |> # group by country for individual events in each sport
+  summarise(Total_Sport_Medals = n(), .groups = "drop")  #count total medals for each sport
+
+
+comparison <- best_athletes |>
+  left_join(country_sport_medals, by = c("Country", "Olympic_Sport")) |>  #join by country and sport medals
+  select(Country, Athlete_First_Name, Athlete_Last_Names, Olympic_Sport, Total_Medals, Total_Sport_Medals) |>
+  rename( Total_Medals_by_Top_Athlete = Total_Medals, #rename column names
+          Total_Medals_in_Sport = Total_Sport_Medals
+  )
+
+comparison
+```
+
+```{r}
+comparison_long <- comparison |> #tidying new dataset with pivot longer to read better
+  pivot_longer(cols = c(Total_Medals_by_Top_Athlete, Total_Medals_in_Sport), 
+               names_to = "Medal_Type", 
+               values_to = "Number_of_Medals")
+
+comparison_long
+```
+
+# Statistical Summary
+
+### Games Participation
+
+```{r}
+#na.rm removes any NA values
+summary_stats <- medals_athletes |>
+  group_by(Olympic_Year, Event_Gender) |> #group by year and gender
+  summarise(
+    Mean_Participation = mean(Games_Participations, na.rm = TRUE),#calculate the average
+    Median_Participation = median(Games_Participations, na.rm = TRUE), #calculate the middle value
+    Min_Participation = min(Games_Participations, na.rm = TRUE),#calculate the smallest number
+    Max_Participation = max(Games_Participations, na.rm = TRUE),#calculate the biggest number
+    SD_Participation = sd(Games_Participations, na.rm = TRUE), #calculate the standard Deviation
+    IQR_Participation = IQR(Games_Participations, na.rm = TRUE) #calculate the interquartile range
+  ) |>
+  arrange(Olympic_Year) #arrange in ascending order
+
+summary_stats
+```
+
+## Medals Won During the Winter Olympics
+
+```{r}
+#calculate the total medals for each country per year
+medals_by_country_year <- medals_hosts_winter |>
+  group_by(Country, Olympic_Year) |>  #group by country and year
+  summarise(Total_Medals = n(), .groups = "drop")  #add the number of medals per country per year
+
+
+top_3_countries <- medals_by_country_year |>
+  group_by(Country) |> #group by country
+  summarise(Total_Medals = sum(Total_Medals), .groups = "drop") |>  #add the total medals for each country
+  arrange(desc(Total_Medals)) |> #arrange them from biggest to smallest
+  slice_head(n = 3)  #select the top 3 countries with the most medals
+
+#remove any NA values
+individual_participation_summary <- medals_by_country_year |>
+  filter(Country %in% top_3_countries$Country) |>  #filter by the top 3 countries
+  group_by(Country) |>  #group by country
+  summarise(
+    Mean_Medals = mean(Total_Medals, na.rm = TRUE),#calculate the average medals per year
+    Median_Medals = median(Total_Medals, na.rm = TRUE),#calculate the middle number of medals per year
+    Min_Medals = min(Total_Medals, na.rm = TRUE),#calculate the minimum medals won per year
+    Max_Medals = max(Total_Medals, na.rm = TRUE),#calculate the maximum medals won per year
+    SD_Medals = sd(Total_Medals, na.rm = TRUE),#calculate the standard deviation of medals per year
+    IQR_Medals = IQR(Total_Medals, na.rm = TRUE)#calculate the interquartile range of medals per year
+  ) |>
+  arrange(desc(Mean_Medals))  #arrange by highest mean
+
+individual_participation_summary
+```
+
+## Medals Won During the Summer Olympics
+
+```{r}
+medals_by_country_year_summer <- medals_hosts_summer |>
+  group_by(Country, Olympic_Year) |>  #group by country and year
+  summarise(Total_Medals = n(), .groups = "drop")  #count the number of medals per country per year
+
+
+top_3_summer_countries <- medals_by_country_year_summer |>
+  group_by(Country) |> #group by country
+  summarise(Total_Medals = sum(Total_Medals), .groups = "drop") |>  #add total medals by country
+  arrange(desc(Total_Medals)) |> #arrange in descending order
+  slice_head(n = 3)  #select the top 3 countries
+
+#remove NA values
+individual_participation_summary_summer <- medals_by_country_year_summer |>
+  filter(Country %in% top_3_summer_countries$Country) |>  #filter by the top 3 countries
+  group_by(Country) |>  # group by country
+  summarise(
+    Mean_Medals = mean(Total_Medals, na.rm = TRUE), #calculate the mean of medals per year
+    Median_Medals = median(Total_Medals, na.rm = TRUE),#calculate the median of medals per year
+    Min_Medals = min(Total_Medals, na.rm = TRUE),#calculate the minimum medals won per year
+    Max_Medals = max(Total_Medals, na.rm = TRUE),#calculate the maximum medals won per year
+    SD_Medals = sd(Total_Medals, na.rm = TRUE),#caluclate the standard deviation of the medals won
+    IQR_Medals = IQR(Total_Medals, na.rm = TRUE)#calculate the interquartile range of medals won
+  ) |>
+  arrange(desc(Mean_Medals))  # arrange by highest mean
+
+individual_participation_summary_summer
+```
+
+### Age Demographics And The Number of Medals They Win
+
+```{r}
+medals_by_age <- medals_with_age |>
+  group_by(Age, Event_Gender) |>
+  summarise(Total_Medals = n(), .groups = "drop")  #count total medals by age and gender
+
+
+age_gender_summary <- medals_by_age |>
+  group_by(Age) |>  #group by gender
+  summarise(
+    Mean_Medals = mean(Total_Medals, na.rm = TRUE),#calculate the mean total medals
+    Median_Medals = median(Total_Medals, na.rm = TRUE),#calculate the median total medals
+    Min_Medals = min(Total_Medals, na.rm = TRUE),#calculate the minimum total medals
+    Max_Medals = max(Total_Medals, na.rm = TRUE),#calculate the maximum total medals
+    SD_Medals = sd(Total_Medals, na.rm = TRUE),#calculate the standard deviation of total medals
+    IQR_Medals = IQR(Total_Medals, na.rm = TRUE)#calculate the interquartile range of total medals
+  ) |>
+  arrange(desc(Mean_Medals))#arrange by highest mean
+
+age_gender_summary
+
+```
+
+### Hosts vs non hosts
+
+```{r}
+#total medals for the United States
+medals_summary_by_year_us <- medals_top_country_us |>
+  filter(Game_Season == "Summer") |> #filter where season is summer
+  group_by(Country, Game_of_Year) |>  #group by Country and Year
+  summarise(
+    Total_Medals = n(),  #add the total medals won
+    Gold_Medals = sum(Medal_Type == "G", na.rm = TRUE), #add all gold medals
+    Silver_Medals = sum(Medal_Type == "S", na.rm = TRUE), #add all silver medals
+    Bronze_Medals = sum(Medal_Type == "B", na.rm = TRUE), #add all bronze medals
+    .groups = "drop"  # ungroup after summarizing
+  )
+
+#total medals for Germany
+medals_summary_by_year_ger <- medals_top_country_ger |>
+  filter(Game_Season == "Summer") |> #filter where season is summer
+  group_by(Country, Game_of_Year) |>  #group by Country and Year
+  summarise(
+    Total_Medals = n(),  #add the total medals won
+    Gold_Medals = sum(Medal_Type == "G", na.rm = TRUE), #add all gold medals
+    Silver_Medals = sum(Medal_Type == "S", na.rm = TRUE), #add all silver medals
+    Bronze_Medals = sum(Medal_Type == "B", na.rm = TRUE), #add all bronze medals
+    .groups = "drop"  # un group after summarizing
+  )
+
+#total medals for Great Britain
+medals_summary_by_year_bri <- medals_top_country_bri |>
+  filter(Game_Season == "Summer") |> #filter where season is summer
+  group_by(Country, Game_of_Year) |>  #group by Country and Year
+  summarise(
+    Total_Medals = n(),  #add the total medals won
+    Gold_Medals = sum(Medal_Type == "G", na.rm = TRUE), #add all the gold medals
+    Silver_Medals = sum(Medal_Type == "S", na.rm = TRUE), #add all the silver medals
+    Bronze_Medals = sum(Medal_Type == "B", na.rm = TRUE), #add all the bronze medals
+    .groups = "drop"  #ungroup after summarizing
+  )
+
+
+all_medals_summaries <- bind_rows(
+  medals_summary_by_year_us, #merge medals for each country into one dataset
+  medals_summary_by_year_ger,
+  medals_summary_by_year_bri
+)
+
+#ignore NA values
+statistical_summary <- all_medals_summaries |>
+  group_by(Country) |>  #group by country
+  summarise(
+    Mean_Medals = mean(Total_Medals, na.rm = TRUE),#calculate the mean of the total medals
+    Median_Medals = median(Total_Medals, na.rm = TRUE),#calculate the median of total medals
+    Min_Medals = min(Total_Medals, na.rm = TRUE), #calculate the minimum total medals
+    Max_Medals = max(Total_Medals, na.rm = TRUE), #calculate the maximum total medals
+    SD_Medals = sd(Total_Medals, na.rm = TRUE),#calculate the standard deviation of total medals
+    IQR_Medals = IQR(Total_Medals, na.rm = TRUE)#calculate the interquartile range of total medals
+  ) |>
+  arrange(desc(Mean_Medals))  #arrange by highest mean
+
+
+statistical_summary
+```
+
+### Top Athletes vs Their Country
+
+```{r}
+
+athlete_medal_counts <- medals_top_5 |>
+  group_by(Country, Athlete_First_Name, Athlete_Last_Names, Olympic_Sport) |>
+  summarise(Total_Medals = n(), .groups = "drop") |>#add the total medals for each athlete
+  arrange(Country, desc(Total_Medals))  #arrange countries in alphabetical order and arrange medals from biggest to smallest
+
+
+best_athletes <- athlete_medal_counts |>
+  group_by(Country) |>
+  slice_head(n = 1)  #select the top athlete with the most medals for each country
+
+
+country_sport_medals <- medals_top_5 |>
+  filter(Participant_Type == "Athlete") |>  #filter by individual athlete events
+  group_by(Country, Olympic_Sport) |>  #group by country and sport
+  summarise(Total_Sport_Medals = n(), .groups = "drop")  #add the total medals for each sport
+
+
+comparison <- best_athletes |>
+  left_join(country_sport_medals, by = c("Country", "Olympic_Sport")) |>  #join by country and sport
+  select(Country, Athlete_First_Name, Athlete_Last_Names, Olympic_Sport, Total_Medals, Total_Sport_Medals) |>
+  rename(Total_Medals_by_Top_Athlete = Total_Medals, #rename columns
+         Total_Medals_in_Sport = Total_Sport_Medals)
+
+
+comparison_long <- comparison |>
+  pivot_longer(cols = c(Total_Medals_by_Top_Athlete, Total_Medals_in_Sport), #tidy data
+               names_to = "Medal_Type", 
+               values_to = "Number_of_Medals")
+
+#remove NA values
+statistical_summary <- comparison_long |>
+  group_by(Medal_Type) |>  #group by medal type
+  summarise(
+    Mean_Medals = mean(Number_of_Medals, na.rm = TRUE),#calculate the average
+    Median_Medals = median(Number_of_Medals, na.rm = TRUE),#calculate the median
+    Min_Medals = min(Number_of_Medals, na.rm = TRUE),#calculate the minimum number of medals
+    Max_Medals = max(Number_of_Medals, na.rm = TRUE),#calculate the maximum number of medals
+    SD_Medals = sd(Number_of_Medals, na.rm = TRUE),#calculate the standard deviation
+    IQR_Medals = IQR(Number_of_Medals, na.rm = TRUE) #calculate the interquartile range
+  ) |>
+  arrange(Medal_Type)  #arrange by medal type
+
+statistical_summary
+```
+
+# Exploratory Data Analysis
+
+How have participation trends for male and female athletes in the Olympic Games evolved over time?
+
+```{r}
+ggplot(medal_athletes_joined, aes(x = Olympic_Year, y = Sum_Games_Participations, color = Event_Gender)) +
+  geom_line(size = 1) +  #create lines for each gender
+  geom_point(size = 2) +  #add geom points on the line for each data point
+  labs(title = "Games Participations Over Time", #creating customized labels
+       subtitle = "Participation trends for male and female athletes over time",
+       x = "Olympic Year",
+       y = "Total Games Participations",
+       color = "Gender") +  
+  scale_color_brewer(palette = "Accent") + #adding a colour brewer palette
+  theme_minimal() +  #use a minimal theme for a clean look
+ scale_x_continuous(breaks = seq(from = min(medal_athletes_joined$Olympic_Year), #x axis must start from min and end at max
+                                  to = max(medal_athletes_joined$Olympic_Year), 
+                                  by = 8)) + #adjust x-axis to go up in increments of 8 years
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  #rotate x-axis labels
+```
+
+What is the relationship between the distribution of medals won by the top 3 countries in individual events at the Winter Olympics and at the Summer Olympics?
+
+```{r}
+winter_plot <- ggplot(medals_by_winter_countries, aes(x = "", y = Total_Medals, fill = Country)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start = 0) + #flip axis
+  labs(title = "Total Medals Won", #add customized labels
+       subtitle = "During Winter Olympics",
+       fill = "Country") +
+  scale_fill_brewer(palette = "Set3")+ #use a scale fill brewer palette
+  theme_light()+ #add a theme to the graph
+  theme(legend.position = "bottom", #move the legend to appear below the graph
+        legend.key.size = unit(0.00000000000001, "cm")) #adjust the size of the legend in cms
+
+summer_plot <- ggplot(medals_by_summer_countries, aes(x = "", y = Total_Medals, fill = Country)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start = 0) + #flip axis and start at 0
+  labs(title = "Total Medals Won", #add customized labels
+       subtitle = "During Summer Olympics",
+       fill = "Country") +
+  scale_fill_brewer(palette = "Set3")+ #use a scale fill brewer palette
+  theme_light()+ #add a theme to the graph
+  theme(legend.position = "none") #remove the legend from the graph
+
+combined_plots <- winter_plot + summer_plot #add plots together using patchwork
+combined_plots
+```
+
+How do age demographics of athletes correlate with medal wins?
+
+```{r}
+ggplot(medals_by_age, aes(x = Age, y= Total_Medals, colour = Event_Gender)) +
+  geom_point() +
+  labs(title = "Medals Won by Age of Athletes", #add customized labels
+       subtitle = "The Total Number of Medals Won by Each Age Category Along With \n Their Gender",
+       x = "Age Category",
+       y = "Total Number of Medals",
+       colour = "Gender") +
+   scale_x_continuous(breaks = seq(10, 70, by = 5)) +  #set x-axis to start from 10 and end at 70 and have intervals of every 5 years
+  scale_y_continuous(breaks = seq(0, 200, by = 40)) + 
+  theme_light()
+```
+
+What are the relationships between host countries and the number of medals their athletes win compared to non host countries and the number of medals their athletes win over 30 years during summer ?
+
+```{r}
+
+US_plot <- ggplot(medals_summary_by_year_us, aes(x = Game_of_Year, y = Total_Medals, fill = Country)) +
+  geom_bar(stat = "identity", position = "dodge") +  #use 'identity' to plot actual values
+  coord_flip()+ #flip x and y axis to show olympic years more accurately 
+  labs(title = "Total Medals Won During The Summer Olympics", #customize labels
+       subtitle = "Over A Period of 30 Years",
+       x = "Olympic Year",
+       y = "Total Medals",
+       fill = "Country") +
+  scale_fill_brewer(palette = "Dark2") + #use a colour brewer palette
+  theme_minimal() +  #add a minimal theme
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.5),
+        legend.position = "bottom", #rotate x axis text for better readability
+        legend.key.size = unit(0.1, "cm"))+ #adjust the size of the legend in cms
+    scale_x_continuous(breaks = seq(min(medal_athletes_joined$Olympic_Year), 
+                                  max(medal_athletes_joined$Olympic_Year), by = 4))+ #change scale to go up in intervals of 4
+ geom_text_repel(aes(label = ifelse(Game_of_Year == 1996, "Host Year", "")),#add text label for the host year using ggrepel
+                  fontface = "bold", nudge_y = -5, size = 4, color = "yellow")  #make the label bold and change the colour
+ 
+
+GER_plot <- ggplot(medals_summary_by_year_ger, aes(x = Game_of_Year, y = Total_Medals, fill = Country)) +
+  geom_bar(stat = "identity", position = "dodge") +  #use 'identity' to plot actual values
+  coord_flip()+ #flip x and y axis to show olympic years more accurately 
+  labs(x = "Olympic Year", #customize labels
+       y = "Total Medals",
+       fill = "Country") + 
+  scale_fill_brewer(palette = "Dark2") + #use a colour brewer palette
+  theme_minimal() +  #add a minimal theme
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.5),  # Rotate xaxis text for better readability
+        legend.position = "bottom", #move legen position to the bottom of the graph
+        legend.key.size = unit(0.1, "cm"))+ #adjust the size of the legend in cms
+scale_x_continuous(breaks = seq(min(medal_athletes_joined$Olympic_Year), 
+                                  max(medal_athletes_joined$Olympic_Year), by = 4))+ #change scale to go up in intervals of 4
+  geom_text_repel(aes(label = ifelse(Game_of_Year == 1936, "Host Year", "")), #add text label for the host year using ggrepel
+                  fontface = "bold", nudge_y = 5, size = 4, color = "yellow") #make the label bold and change the colour
+
+
+BRI_plot <- ggplot(medals_summary_by_year_bri, aes(x = Game_of_Year, y = Total_Medals, fill = Country)) +
+  geom_bar(stat = "identity", position = "dodge") +  #use 'identity' to plot actual values
+  coord_flip()+ #flip x and y axis to show olympic years more accurately 
+  labs( x = "Olympic Year",  #customize labels
+       y = "Total Medals",
+       fill = "Country") +  
+  scale_fill_brewer(palette = "Dark2") + #use a colour brewer palette
+  theme_minimal() +  #use a minimal theme
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.5),
+        legend.position = "bottom", #rotate x axis text for better readability
+  legend.key.size = unit(0.1, "cm"))+ #adjust the size of the legend in cms
+scale_x_continuous(breaks = seq(min(medal_athletes_joined$Olympic_Year), 
+                                  max(medal_athletes_joined$Olympic_Year), by = 4))+ #change scale to go up in 4
+  geom_text_repel(aes(label = ifelse(Game_of_Year == 2012, "Host Year", "")),#add text label for the host year using ggrepel
+                  fontface = "bold", nudge_y = 5, size = 4, color = "yellow")  #make the label bold and change the colour
+
+
+
+combined_plot <- US_plot + GER_plot + BRI_plot #combine graphs to appear next to each other
+combined_plot
+```
+
+How does the number of medals won by the top athletes from a specific country in their sport compare to the total number of medals the country has won in that sport for individual events?
+
+```{r}
+ggplot(comparison_long, aes(x = Country, y = Number_of_Medals, fill = Medal_Type)) +
+  geom_bar(stat = "identity") + #create a bar graph using ggplot
+  labs(title = "Comparison of Top Athletes' Medals and Country Medals by Sport", #add custom labels
+       subtitle = "Top Athletes Medals and The Overall Performance of Their Countries \n in Their Athletes Sport",
+       x = "Country",
+       y = "Number of Medals",
+       fill = "Type") +
+  scale_fill_brewer(palette = "Accent") + #add a colour brewer palette
+  theme_light() + #add a theme
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 4),
+        legend.key.size = unit(0.1, "cm"),
+        legend.position = "bottom")+  #move legend position to the bottom of the graph
+
+  geom_text(data = comparison_long |>
+              filter(Medal_Type == "Total_Medals_by_Top_Athlete"),  #filter by top athlete's medals only
+            aes(label = paste(Athlete_First_Name, Athlete_Last_Names, "\n(", Olympic_Sport, ")", sep = "")),
+            nudge_y = 200,  # moves the label above the bars
+            size = 1.5)  #change text size
+```
